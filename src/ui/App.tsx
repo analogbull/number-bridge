@@ -55,6 +55,9 @@ export default function App() {
           <button onClick={() => setShowSelector(true)}>选择玩法</button>
         </div>
       </header>
+      <div style={{ position: 'absolute', bottom: 4, right: 8, fontSize: 10, opacity: 0.3, pointerEvents: 'none', color: '#fff' }}>
+        v2026-02-12-FixV3
+      </div>
       {showSelector ? (
         <ModeSelect onSelect={(m) => { setMode(m); setSelectedMode(m); setShowSelector(false); setSeed(Date.now()) }} />
       ) : (
