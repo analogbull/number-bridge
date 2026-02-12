@@ -8,13 +8,406 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <!-- 
     <script>
       (function () {
+        // 严格限制只在本地文件协议下运行
+        // 在 Vercel 等服务器环境，依靠 React 运行
+        if (location.protocol !== 'file:') return
+
+        // 如果是本地文件协议，或者 React 尚未加载（针对不支持 Module 的环境），则运行此备份脚本
+        // 这确保了用户在没有 Node 环境时也能双击 index.html 运行
         if (window.__NBB_RAN__) return
-        // ... (Fallback script removed for clarity and to prevent confusion)
+        
+        // 简单的环境检测
+        const isLocal = location.protocol === 'file:'
+        if (!isLocal) {
+            // 在服务器上，我们希望优先等待 React 加载
+            // 设置一个超时，如果 React 1秒内没反应，再加载备份
+            // 但为了简单，我们假设如果支持 module 就会加载 main.tsx
+            // 这里不做处理，让两者竞争（React 通常会覆盖）
+        }
+
+        const root = document.getElementById('root')
+        const css = document.createElement('link')
+        css.rel = 'stylesheet'
+        css.href = './src/ui/styles.css'
+        document.head.appendChild(css)
+
+        const state = {
+          levelId: 1,
+          gaps: [],
+          currentGapIndex: 0,
+          bank: [],
+          errorsCount: 0,
+          usedHints: 0,
+          status: 'PLAYING',
+          tipText: '',
+          roleStep: 0,
+          startAt: Date.now(),
+          mode: null,
+        }
+
+        const MODE_CONFIG = {
+          SUM2: { requiredCount: 2, operators: ['+'], label: '两块相加（a+b）' },
+          ADD2_SUB2: { requiredCount: 4, operators: ['+','-','-'], label: '四块加减（a+b−c−d）' }
+        }
+
+        try {
+          const s = localStorage.getItem('number-bridge-settings')
+          if (s) {
+            const parsed = JSON.parse(s)
+            if (parsed.mode && MODE_CONFIG[parsed.mode]) state.mode = parsed.mode
+          }
+        } catch (e) {}
+
+        function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min }
+        function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]] } return a }
+        
+        function beep(freq = 800, ms = 120, type = 'sine') {
+          try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)()
+            const osc = ctx.createOscillator()
+            const gain = ctx.createGain()
+            osc.type = type
+            osc.frequency.value = freq
+            osc.connect(gain)
+            gain.connect(ctx.destination)
+            gain.gain.setValueAtTime(0.001, ctx.currentTime)
+            gain.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime + 0.02)
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + ms / 1000)
+            osc.start()
+            setTimeout(() => { osc.stop(); ctx.close() }, ms + 20)
+          } catch(e) {}
+        }
+
+        function evaluateGap(mode, values, target) {
+          const cfg = MODE_CONFIG[mode]
+          let result = values[0] || 0
+          for (let i = 0; i < cfg.operators.length; i++) {
+            const op = cfg.operators[i]
+            const v = values[i + 1] || 0
+            if (op === '+') result += v
+            else if (op === '-') result -= v
+          }
+          const ready = values.length === cfg.requiredCount
+          return { result, diff: target - result, ready }
+        }
+
+        function genGap(difficulty = 'A', mode = 'SUM2') {
+          const target = difficulty === 'A' ? randInt(5, 10) : difficulty === 'B' ? randInt(10, 20) : randInt(20, 100)
+          let base = []
+          
+          if (mode === 'SUM2') {
+            const a = randInt(1, Math.floor(target / 2))
+            const b = target - a
+            base = [a, b]
+          } else {
+            // Fix infinite loop logic for 4 planks
+            let t = target
+            let c = randInt(1, Math.floor(t / 2))
+            let d = randInt(1, Math.floor(t / 2))
+            let sumNeeded = t + c + d
+            // Ensure sumNeeded is large enough to be split
+            let a = randInt(Math.max(1, Math.floor(sumNeeded / 3)), Math.floor(sumNeeded / 2))
+            let b = sumNeeded - a
+            base = [a, b, c, d]
+          }
+
+          const noise = []
+          const n = difficulty === 'C' ? 10 : 8
+          const upper = Math.max(target + 30, 40)
+          
+          for (let i = 0; i < n; i++) {
+            let v = randInt(1, upper)
+            if (base.some(x => Math.abs(v - x) <= 2)) v += randInt(3, 5)
+            noise.push(v)
+          }
+          
+          const bank = shuffle([...base, ...noise]).map((v, i) => ({ id: 'p' + i + '_' + Date.now(), value: v }))
+          const required = MODE_CONFIG[mode].requiredCount
+          return { id: 'gap_' + Math.random().toString(36).slice(2), target, slots: Array(required).fill(null), bank }
+        }
+
+        function genLevel() {
+          const m = state.mode || 'SUM2'
+          const gaps = m === 'ADD2_SUB2'
+            ? [genGap('A', m), genGap('B', m)]
+            : [genGap('A', m), genGap('A', m), genGap('B', m)]
+          state.gaps = gaps
+          state.bank = gaps[0].bank.slice()
+          state.currentGapIndex = 0
+          state.errorsCount = 0
+          state.usedHints = 0
+          state.roleStep = 0
+          state.status = 'PLAYING'
+          state.tipText = ''
+          state.startAt = Date.now()
+        }
+
+        function renderSelector() {
+          root.innerHTML = `
+            <div style="padding:24px; display:flex; gap:24px; justify-content:center; flex-wrap:wrap; margin-top: 40px;">
+              <button class="mode-card" id="modeSum2" title="${MODE_CONFIG.SUM2.label}">
+                <div class="mode-title">${MODE_CONFIG.SUM2.label}</div>
+                <div class="mode-illustration">
+                  <div class="mode-slot">+</div>
+                  <div class="mode-eq">= T</div>
+                </div>
+              </button>
+              <button class="mode-card" id="modeAdd2Sub2" title="${MODE_CONFIG.ADD2_SUB2.label}">
+                <div class="mode-title">${MODE_CONFIG.ADD2_SUB2.label}</div>
+                <div class="mode-illustration">
+                  <div class="mode-slot">+</div><div class="mode-slot">-</div><div class="mode-slot">-</div>
+                  <div class="mode-eq">= T</div>
+                </div>
+              </button>
+            </div>
+          `
+          document.getElementById('modeSum2').onclick = () => {
+            state.mode = 'SUM2'
+            saveMode()
+            genLevel()
+            render()
+          }
+          document.getElementById('modeAdd2Sub2').onclick = () => {
+            state.mode = 'ADD2_SUB2'
+            saveMode()
+            genLevel()
+            render()
+          }
+        }
+        
+        function saveMode() {
+            try {
+              const s = localStorage.getItem('number-bridge-settings')
+              const parsed = s ? JSON.parse(s) : {}
+              parsed.mode = state.mode
+              localStorage.setItem('number-bridge-settings', JSON.stringify(parsed))
+            } catch (e) {}
+        }
+
+        function render() {
+          if (!state.mode) { renderSelector(); return }
+          
+          const elapsed = Math.floor((Date.now() - state.startAt) / 1000)
+          const gap = state.gaps[state.currentGapIndex]
+          const vals = gap.slots.filter(Boolean).map(p => p.value)
+          const evalRes = evaluateGap(state.mode, vals, gap.target)
+          const remaining = evalRes.diff
+
+          root.innerHTML = `
+            <div class="game">
+              <div class="hud">
+                <div>Level ${state.levelId} · Gap ${state.currentGapIndex + 1}/${state.gaps.length}</div>
+                <div>Errors ${state.errorsCount}</div>
+                <div>Time ${elapsed}s</div>
+                <div class="controls-bar">
+                  <button class="btn secondary" id="btnChooseMode">选择玩法</button>
+                  <button class="btn" id="btnHint">提示</button>
+                  <button class="btn secondary" id="btnReset">重来</button>
+                </div>
+                <div class="feedback">${state.tipText || (vals.length ? '当前值 ' + evalRes.result + '，还差 ' + remaining : '把桥板拖到槽位上')}</div>
+              </div>
+              <div class="river">
+                <div class="role ${state.roleStep ? 'move' : ''}"></div>
+                <div class="gaps ${state.mode === 'ADD2_SUB2' ? 'wide' : ''}">
+                  ${state.gaps.map((g, i) => `
+                    <div id="${g.id}" class="gap ${g.slots.length > 3 ? 'gap-4' : ''}" style="opacity:${i < state.currentGapIndex ? 0.5 : 1}">
+                      <div class="target">${g.target}</div>
+                      <svg class="rope-svg" viewBox="0 0 220 140" preserveAspectRatio="none" style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:0;">
+                         <defs>
+                           <linearGradient id="sb_${i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#bfc6cd"/><stop offset="100%" stop-color="#88939e"/></linearGradient>
+                         </defs>
+                         <!-- 简化版 SVG 渲染，为了本地运行不依赖复杂组件 -->
+                      </svg>
+                      <div class="slots expr ${MODE_CONFIG[state.mode].requiredCount > 3 ? 'tight' : ''}" style="z-index:1">
+                        ${g.slots.map((p, si) => `
+                          <div class="slot ${p ? 'filled' : ''} ${i === state.currentGapIndex ? 'highlight' : ''}" data-si="${si}" data-gi="${i}">${p ? p.value : ''}</div>
+                          ${si < MODE_CONFIG[state.mode].operators.length ? `<div class="op">${MODE_CONFIG[state.mode].operators[si]}</div>` : ''}
+                        `).join('')}
+                        <div class="eq">=</div>
+                        <div class="mode-eq">T</div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+              <div class="bank">
+                ${state.bank.map((p, i) => `
+                  <div class="plank" data-idx="${i}" style="touch-action: none;">${p.value}</div>
+                `).join('')}
+              </div>
+            </div>
+          `
+          bindEvents()
+        }
+
+        function checkGap() {
+          const gap = state.gaps[state.currentGapIndex]
+          const filled = gap.slots.filter(Boolean)
+          if (filled.length < gap.slots.length) return
+          
+          state.status = 'CHECKING'
+          const vals = filled.map(p => p.value)
+          const evalRes = evaluateGap(state.mode, vals, gap.target)
+          
+          if (evalRes.ready && evalRes.diff === 0) {
+            beep(900, 120, 'triangle')
+            state.roleStep++
+            
+            // 水花特效
+            try {
+                const river = document.querySelector('.river')
+                const gapEl = document.getElementById(gap.id)
+                if (river && gapEl) {
+                  const rr = river.getBoundingClientRect()
+                  const gr = gapEl.getBoundingClientRect()
+                  const x = gr.left + gr.width / 2 - rr.left
+                  const y = gr.bottom - rr.top + 6
+                  const el = document.createElement('div')
+                  el.className = 'ripple'
+                  el.style.left = x + 'px'
+                  el.style.top = y + 'px'
+                  river.appendChild(el)
+                  setTimeout(() => el.remove(), 950)
+                }
+            } catch(e){}
+
+            const gapEl = document.getElementById(gap.id)
+            if (gapEl) gapEl.classList.add('success')
+
+            setTimeout(() => {
+              if (gapEl) gapEl.classList.remove('success')
+              if (state.currentGapIndex === state.gaps.length - 1) {
+                // 通关！
+                state.levelId++
+                genLevel()
+                render()
+              } else {
+                state.currentGapIndex++
+                const next = state.gaps[state.currentGapIndex]
+                state.bank = next.bank.slice()
+                state.status = 'PLAYING'
+                render()
+              }
+            }, 1000)
+          } else {
+            beep(180, 180, 'sawtooth')
+            state.errorsCount++
+            const gapEl = document.getElementById(gap.id)
+            if (gapEl) {
+              gapEl.classList.add('fail')
+              setTimeout(() => gapEl.classList.remove('fail'), 500)
+            }
+            // 退回桥板
+            for (let i = 0; i < gap.slots.length; i++) {
+              const p = gap.slots[i]
+              if (p) { state.bank.push(p); gap.slots[i] = null }
+            }
+            state.status = 'PLAYING'
+            render()
+          }
+        }
+
+        let dragging = null
+        let dragOffset = {x:0, y:0}
+
+        function bindEvents() {
+          document.getElementById('btnReset').onclick = () => { genLevel(); render() }
+          document.getElementById('btnChooseMode').onclick = () => {
+            state.mode = null
+            renderSelector()
+          }
+          
+          // Hint Logic
+          document.getElementById('btnHint').onclick = () => {
+            const gap = state.gaps[state.currentGapIndex]
+            const filledCount = gap.slots.filter(Boolean).length
+            const cfg = MODE_CONFIG[state.mode]
+            if (filledCount >= cfg.requiredCount) return
+            
+            const nextOp = cfg.operators[filledCount] || '+'
+            let bestIdx = -1, bestScore = Infinity
+            
+            for (let i = 0; i < state.bank.length; i++) {
+              const vals = gap.slots.filter(Boolean).map(p => p.value)
+              const v = state.bank[i].value
+              const testVals = vals.slice()
+              if (filledCount === 0) testVals.push(v)
+              else {
+                const interim = evaluateGap(state.mode, vals, gap.target).result
+                const resultPreview = nextOp === '+' ? interim + v : interim - v
+                const diffPreview = Math.abs(gap.target - resultPreview)
+                if (diffPreview < bestScore) { bestScore = diffPreview; bestIdx = i }
+                continue
+              }
+              const diffPreview = Math.abs(evaluateGap(state.mode, testVals, gap.target).diff)
+              if (diffPreview < bestScore) { bestScore = diffPreview; bestIdx = i }
+            }
+            
+            const els = document.querySelectorAll('.plank')
+            if (bestIdx !== -1 && els[bestIdx]) {
+              els[bestIdx].style.boxShadow = '0 0 18px #10b981'
+              setTimeout(() => els[bestIdx].style.boxShadow = '', 600)
+            }
+          }
+
+          // Drag and Drop
+          document.querySelectorAll('.plank').forEach(el => {
+            el.onpointerdown = (e) => {
+              const idx = +el.dataset.idx
+              const p = state.bank[idx]
+              const rect = el.getBoundingClientRect()
+              dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+              
+              dragging = { idx, p, el }
+              el.classList.add('dragging')
+              el.setPointerCapture(e.pointerId)
+              beep(700, 80, 'square')
+            }
+          })
+
+          document.onpointermove = (e) => {
+            if (!dragging) return
+            e.preventDefault()
+            const x = e.clientX - dragOffset.x
+            const y = e.clientY - dragOffset.y
+            dragging.el.style.position = 'fixed'
+            dragging.el.style.left = x + 'px'
+            dragging.el.style.top = y + 'px'
+            dragging.el.style.zIndex = 100
+          }
+
+          document.onpointerup = (e) => {
+            if (!dragging) return
+            dragging.el.classList.remove('dragging')
+            dragging.el.style.position = ''
+            dragging.el.style.left = ''
+            dragging.el.style.top = ''
+            dragging.el.style.zIndex = ''
+            
+            const gap = state.gaps[state.currentGapIndex]
+            const gapEl = document.getElementById(gap.id)
+            if (gapEl) {
+                const rect = gapEl.getBoundingClientRect()
+                if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                  const slotIdx = gap.slots.findIndex(s => s === null)
+                  if (slotIdx !== -1) {
+                    gap.slots[slotIdx] = dragging.p
+                    state.bank.splice(dragging.idx, 1)
+                    render()
+                    checkGap()
+                  }
+                }
+            }
+            dragging = null
+          }
+        }
+
+        // Start
+        if (!state.mode) renderSelector()
+        else { genLevel(); render() }
       })()
-    </script> 
-    -->
+    </script>
   </body>
-  </html>
+</html>
