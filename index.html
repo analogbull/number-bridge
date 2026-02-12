@@ -25,6 +25,8 @@
             // 设置一个超时，如果 React 1秒内没反应，再加载备份
             // 但为了简单，我们假设如果支持 module 就会加载 main.tsx
             // 这里不做处理，让两者竞争（React 通常会覆盖）
+            // 在 Vercel 上，我们不运行这个备份脚本，以防冲突
+            return
         }
 
         const root = document.getElementById('root')
