@@ -2,51 +2,71 @@
 set "PATH=%PATH%;C:\Program Files\Git\cmd"
 
 echo ========================================
-echo Number Bridge - GitHub Publisher (Auto)
+echo Number Bridge - Smart Publisher
 echo ========================================
-echo.
 
-echo [1/4] Checking Git...
-git --version
-if %errorlevel% neq 0 (
-    echo Error: Git not found.
-    pause
-    exit /b
-)
-
-echo [2/4] Checking Repository...
-if not exist .git (
-    echo Initializing repo...
-    git init
-)
-
-echo [3/4] Committing...
+REM 1. Commit changes first
+if not exist .git git init
 git add .
-git commit -m "Auto-update"
+git commit -m "Auto-update" 2>nul
 
-echo [4/4] Pushing to GitHub...
-echo Note: If this fails, you may need a VPN.
 echo.
-
-REM Try direct push first
+echo [Attempt 1] Trying DIRECT connection...
+echo (Clearing old proxy settings...)
+git config --global --unset http.proxy
+git config --global --unset https.proxy
 git push -u origin main
 
-if %errorlevel% neq 0 (
-    echo.
-    echo ----------------------------------------
-    echo [ERROR] Push Failed!
-    echo ----------------------------------------
-    echo Common reasons:
-    echo 1. Network timeout (Please turn on VPN/Proxy)
-    echo 2. Permission denied (Check GitHub login)
-    echo.
-    echo If you have a proxy (e.g. Clash), edit this file and uncomment the proxy lines.
-    echo.
-) else (
-    echo.
-    echo [SUCCESS] Push Complete!
-)
+if %errorlevel% equ 0 goto SUCCESS
 
 echo.
-echo Press any key to exit...
+echo ----------------------------------------
+echo [Attempt 1 Failed] Direct connection timed out.
+echo ----------------------------------------
+echo.
+echo [Attempt 2] Trying CLASH Proxy (Port 7890)...
+git config --global http.proxy http://127.0.0.1:7890
+git config --global https.proxy http://127.0.0.1:7890
+git push -u origin main
+
+if %errorlevel% equ 0 goto SUCCESS
+
+echo.
+echo ----------------------------------------
+echo [Attempt 2 Failed] Port 7890 not working.
+echo ----------------------------------------
+echo.
+echo [Attempt 3] Trying V2RAY/Other Proxy (Port 10809)...
+git config --global http.proxy http://127.0.0.1:10809
+git config --global https.proxy http://127.0.0.1:10809
+git push -u origin main
+
+if %errorlevel% equ 0 goto SUCCESS
+
+:FAIL
+echo.
+echo ========================================
+echo ALL ATTEMPTS FAILED.
+echo ========================================
+echo.
+echo It seems we cannot connect to GitHub.
+echo.
+echo Please try the following manually:
+echo 1. Open your VPN/Proxy software.
+echo 2. Check what "Port" it is using (usually in Settings).
+echo 3. Tell the AI assistant: "My proxy port is [number]"
+echo.
+echo Cleaning up settings...
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+pause
+exit /b
+
+:SUCCESS
+echo.
+echo ========================================
+echo [SUCCESS] Uploaded successfully!
+echo ========================================
+echo.
+echo Your settings have been saved. Next time it will be faster.
 pause
