@@ -58,6 +58,7 @@ export default function App() {
         <River ref={riverRef} flowEnabled={flowEnabled} reducedMotion={reducedMotion}>
           <SplashEffect ref={splashRef} enabled={particlesEnabled} />
           <Game
+            key={level.levelId}
             level={level}
             riverRef={riverRef}
             splashRef={splashRef}
