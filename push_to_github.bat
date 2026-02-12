@@ -1,48 +1,52 @@
 @echo off
 set "PATH=%PATH%;C:\Program Files\Git\cmd"
 
-echo ----------------------------------------
-echo Number Bridge - GitHub Publisher
-echo ----------------------------------------
+echo ========================================
+echo Number Bridge - GitHub Publisher (Auto)
+echo ========================================
+echo.
 
-REM Check if .git exists
+echo [1/4] Checking Git...
+git --version
+if %errorlevel% neq 0 (
+    echo Error: Git not found.
+    pause
+    exit /b
+)
+
+echo [2/4] Checking Repository...
 if not exist .git (
-    echo [INFO] Initializing new Git repository...
+    echo Initializing repo...
     git init
 )
 
-echo [INFO] Adding files...
+echo [3/4] Committing...
 git add .
+git commit -m "Auto-update"
 
-echo [INFO] Committing changes...
-git commit -m "Auto-update from Trae"
-
-echo [INFO] Configuring branch...
-git branch -M main
-
-echo [INFO] Configuring remote...
-REM Try to add remote, suppress error if it exists
-git remote add origin https://github.com/analogbull/number-bridge.git 2>nul
-REM Ensure URL is correct just in case
-git remote set-url origin https://github.com/analogbull/number-bridge.git
-
+echo [4/4] Pushing to GitHub...
+echo Note: If this fails, you may need a VPN.
 echo.
-echo [ACTION] Pushing to GitHub...
-echo.
-echo ********************************************************
-echo * ATTENTION: A GitHub login window may pop up now.     *
-echo * Please check your taskbar if you don't see it!       *
-echo ********************************************************
-echo.
+
+REM Try direct push first
 git push -u origin main
 
-if %ERRORLEVEL% EQU 0 (
+if %errorlevel% neq 0 (
     echo.
-    echo [SUCCESS] Upload complete!
+    echo ----------------------------------------
+    echo [ERROR] Push Failed!
+    echo ----------------------------------------
+    echo Common reasons:
+    echo 1. Network timeout (Please turn on VPN/Proxy)
+    echo 2. Permission denied (Check GitHub login)
+    echo.
+    echo If you have a proxy (e.g. Clash), edit this file and uncomment the proxy lines.
+    echo.
 ) else (
     echo.
-    echo [ERROR] Upload failed. Please check the error message above.
+    echo [SUCCESS] Push Complete!
 )
 
 echo.
+echo Press any key to exit...
 pause
