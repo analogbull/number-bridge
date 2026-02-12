@@ -7,9 +7,10 @@ type Props = {
   mode: GameMode
   isActive: boolean
   onSlotClick: (si: number, plank: Plank | null) => void
+  activeSlotIndex?: number
 }
 
-export default function GapSegment({ gap, mode, isActive, onSlotClick }: Props) {
+export default function GapSegment({ gap, mode, isActive, onSlotClick, activeSlotIndex }: Props) {
   const cfg = MODE_CONFIG[mode]
   const ops = cfg.operators
   return (
@@ -17,7 +18,7 @@ export default function GapSegment({ gap, mode, isActive, onSlotClick }: Props) 
       {gap.slots.map((p, si) => (
         <React.Fragment key={si}>
           <div
-            className={'slot' + (p ? ' filled' : '') + (isActive ? ' highlight' : '')}
+            className={'slot' + (p ? ' filled' : '') + (isActive && si === activeSlotIndex ? ' active-input' : '')}
             onClick={() => onSlotClick(si, p)}
           >
             {p?.value ?? ''}

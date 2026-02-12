@@ -228,6 +228,7 @@ export default function Game({ level, riverRef, splashRef, reducedMotion, mode, 
                 gap={g}
                 mode={mode}
                 isActive={i === currentGapIndex}
+                activeSlotIndex={i === currentGapIndex ? g.slots.findIndex(s => s === null) : -1}
                 onSlotClick={(si, p) => {
                   if (p && status !== 'CHECKING') {
                     setBank((b) => [...b, p as Plank])
@@ -248,9 +249,19 @@ export default function Game({ level, riverRef, splashRef, reducedMotion, mode, 
             onPointerMove={(e) => onPlankPointerMove(e, i)}
             onPointerUp={(e) => onPlankPointerUp(e, i)}
             onClick={() => {
-              const t = gaps[currentGapIndex].target
-              setTipText(`和 ${t - p.value} 能凑 ${t}`)
-              setTimeout(() => setTipText(''), 800)
+              if (status !== 'PLAYING') return
+              const gap = gaps[currentGapIndex]
+              const slotIdx = gap.slots.findIndex(s => s === null)
+              if (slotIdx !== -1) {
+                try { playBeep('drop') } catch(e) {}
+                gap.slots[slotIdx] = p
+                setBank((b) => b.filter(item => item.id !== p.id))
+                checkGap(gap)
+              } else {
+                const t = gaps[currentGapIndex].target
+                setTipText(`和 ${t - p.value} 能凑 ${t}`)
+                setTimeout(() => setTipText(''), 800)
+              }
             }}
           >
             {p.value}
