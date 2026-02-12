@@ -63,6 +63,7 @@ export default function App() {
             splashRef={splashRef}
             reducedMotion={reducedMotion}
             mode={mode}
+            onLevelComplete={() => setSeed(Date.now())}
           />
         </River>
       )}

@@ -12,6 +12,7 @@ interface Props {
   splashRef?: React.RefObject<SplashHandle>
   reducedMotion?: boolean
   mode: GameMode
+  onLevelComplete: () => void
 }
 
 function useTimer(running: boolean) {
@@ -25,7 +26,7 @@ function useTimer(running: boolean) {
   return elapsed
 }
 
-export default function Game({ level, riverRef, splashRef, reducedMotion, mode }: Props) {
+export default function Game({ level, riverRef, splashRef, reducedMotion, mode, onLevelComplete }: Props) {
   const [status, setStatus] = useState<'READY'|'PLAYING'|'CHECKING'|'GAP_SUCCESS'|'GAP_FAIL'|'LEVEL_COMPLETE'|'PAUSED'>('READY')
   const [currentGapIndex, setCurrentGapIndex] = useState(0)
   const [errorsCount, setErrorsCount] = useState(0)
@@ -77,6 +78,7 @@ export default function Game({ level, riverRef, splashRef, reducedMotion, mode }
       setTimeout(() => {
         if (currentGapIndex === gaps.length - 1) {
           setStatus('LEVEL_COMPLETE')
+          setTimeout(onLevelComplete, 1000)
         } else {
           setCurrentGapIndex((i) => i + 1)
           setStatus('PLAYING')
