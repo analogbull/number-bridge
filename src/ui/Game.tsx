@@ -98,19 +98,27 @@ export default function Game({ level, riverRef, splashRef, reducedMotion, mode }
   }
 
   const dragRef = useRef<{ plank: Plank | null }>({ plank: null })
+  const dragOffset = useRef({ x: 0, y: 0 })
+
   function onPlankPointerDown(e: React.PointerEvent, plank: Plank) {
-    (e.target as HTMLElement).setPointerCapture(e.pointerId)
+    const el = e.currentTarget as HTMLElement
+    el.setPointerCapture(e.pointerId)
+    const rect = el.getBoundingClientRect()
+    dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    
     playBeep('pick')
     dragRef.current.plank = plank
-    const el = e.currentTarget as HTMLElement
     el.classList.add('dragging')
   }
+
   function onPlankPointerMove(e: React.PointerEvent, idx: number) {
     if (!dragRef.current.plank) return
     const el = e.currentTarget as HTMLElement
     el.style.position = 'absolute'
-    el.style.left = `${e.clientX - 40}px`
-    el.style.top = `${e.clientY - 40}px`
+    // Prevent default touch actions to avoid scrolling while dragging
+    e.preventDefault()
+    el.style.left = `${e.clientX - dragOffset.current.x}px`
+    el.style.top = `${e.clientY - dragOffset.current.y}px`
   }
   function onPlankPointerUp(e: React.PointerEvent, plankIdx: number) {
     const el = e.currentTarget as HTMLElement

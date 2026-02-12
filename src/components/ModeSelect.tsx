@@ -12,7 +12,7 @@ export default function ModeSelect({ onSelect }: Props) {
     onSelect(m)
   }
   return (
-    <div style={{ padding: 24, display: 'flex', gap: 24, justifyContent: 'center' }}>
+    <div style={{ padding: 24, display: 'flex', gap: 24, justifyContent: 'center', flexWrap: 'wrap' }}>
       {(['SUM2', 'ADD2_SUB2'] as GameMode[]).map((m) => (
         <button
           key={m}
