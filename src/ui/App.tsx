@@ -9,6 +9,9 @@ import { getSelectedMode, setSelectedMode } from '../store/settings'
 import ModeSelect from '../components/ModeSelect'
 
 export default function App() {
+  React.useEffect(() => {
+    console.log('Number Bridge Version: 2026-02-12 Fix Level Transition')
+  }, [])
   const [difficulty, setDifficulty] = useState<Difficulty>('A')
   const [seed, setSeed] = useState<number>(Date.now())
   const [mode, setMode] = useState<GameMode>(getSelectedMode())
