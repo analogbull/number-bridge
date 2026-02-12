@@ -181,7 +181,7 @@ export default function Game({ level, riverRef, splashRef, reducedMotion, mode }
           <button className="btn" onClick={hint}>提示</button>
           <button className="btn secondary" onClick={() => location.reload()}>重来</button>
         </div>
-        <div className="feedback">{tipText || (sum ? `合计 ${sum}，还差 ${remaining}` : '把桥板拖到槽位上')}</div>
+        <div className="feedback">{tipText || (evalRes.result ? `合计 ${evalRes.result}，还差 ${remaining}` : '把桥板拖到槽位上')}</div>
       </div>
       <div ref={fallbackRiverRef}>
         <div className={`role ${roleStep ? 'move' : ''}`} />
