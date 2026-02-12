@@ -108,7 +108,7 @@ export default function Game({ level, riverRef, splashRef, reducedMotion, mode, 
     const rect = el.getBoundingClientRect()
     dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
     
-    playBeep('pick')
+    try { playBeep('pick') } catch(e) { console.warn(e) }
     dragRef.current.plank = plank
     el.classList.add('dragging')
   }
@@ -118,7 +118,7 @@ export default function Game({ level, riverRef, splashRef, reducedMotion, mode, 
     const el = e.currentTarget as HTMLElement
     el.style.position = 'absolute'
     // Prevent default touch actions to avoid scrolling while dragging
-    e.preventDefault()
+    if (e.cancelable) e.preventDefault()
     el.style.left = `${e.clientX - dragOffset.current.x}px`
     el.style.top = `${e.clientY - dragOffset.current.y}px`
   }
@@ -131,7 +131,7 @@ export default function Game({ level, riverRef, splashRef, reducedMotion, mode, 
     const plank = dragRef.current.plank
     dragRef.current.plank = null
     if (!plank) return
-    playBeep('drop')
+    try { playBeep('drop') } catch(e) { console.warn(e) }
     const gapEl = document.getElementById(gaps[currentGapIndex].id)!
     const rect = gapEl.getBoundingClientRect()
     if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
